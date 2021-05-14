@@ -29,10 +29,9 @@ ui <- fluidPage(
 
   fluidRow(column(6L, directoryInput('directory', label = NULL))),
   fluidRow(
-    column(3L, htmlOutput('thumbnailImage')),
-    column(9L, verbatimTextOutput('exifInfoBox'))
+    column(2L, imageOutput('thumbnailImage', height = '120px')),
+    column(4L, verbatimTextOutput('exifInfoBox'))
   ),
-  br(),
   fluidRow(
     column(4L, DTOutput('dopListBox')),
 
@@ -40,8 +39,8 @@ ui <- fluidPage(
 
     # column(4L, htmlOutput('thumbnailImage')),
   ),
-  fluidRow(column(12L, uiOutput('diagnostics'))),
-  fluidRow(column(12L, imageOutput('previewImage')))
+  fluidRow(column(12L, uiOutput('diagnostics')))
+  # fluidRow(column(12L, imageOutput('previewImage')))
 )
 
 # Define server logic required to draw a histogram
@@ -113,15 +112,15 @@ server <- function(input, output, session) {
     paste0(readDirectoryInput(session, 'directory'), imageList()[input$imageListBox_rows_selected]) %>% read_exif()
   })
 
-  # output$exifInfoBox <- renderText({
-  #   req(imageList()[,.N > 0L])
-  #   req(input$imageListBox_rows_selected)
-  #   x <- imageExif()
-  #   paste0(
-  #     x$CreateDate, '\n',
-  #     x$Model, '\n'
-  #   )
-  # })
+  output$exifInfoBox <- renderText({
+    req(imageList()[,.N > 0L])
+    req(input$imageListBox_rows_selected)
+    x <- imageExif()
+    paste0(
+      x$CreateDate, '\n',
+      x$Model, '\n'
+    )
+  })
 
 
   output$dopListBox <- renderDT({
