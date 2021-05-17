@@ -21,7 +21,8 @@ ui <- fluidPage(
     tags$style(HTML("
       div.DTS tbody tr.even {background-color: inherit !important;}
       #previewImage img, #thumbnailImage img {max-width: 100%;}
-    "))
+    ")),
+    tags$link(href = 'css/lightbox.min.css', rel = 'stylesheet')
   ),
 
   # Application title
@@ -29,8 +30,13 @@ ui <- fluidPage(
 
   fluidRow(column(6L, directoryInput('directory', label = NULL))),
   fluidRow(
-    column(2L, imageOutput('thumbnailImage', height = '120px')),
-    column(4L, verbatimTextOutput('exifInfoBox'))
+    # column(2L, imageOutput('thumbnailImage', height = '120px')),
+    column(2L, htmlOutput('thumbnailImage', style = "height: 120px;")),
+    column(4L,
+      fluidRow(verbatimTextOutput('exifInfoBox')),
+      uiOutput('buttons')
+    ),
+
   ),
   fluidRow(
     column(4L, DTOutput('dopListBox')),
@@ -39,8 +45,10 @@ ui <- fluidPage(
 
     # column(4L, htmlOutput('thumbnailImage')),
   ),
-  fluidRow(column(12L, uiOutput('diagnostics')))
-  # fluidRow(column(12L, imageOutput('previewImage')))
+  # fluidRow(),
+  fluidRow(column(12L, uiOutput('diagnostics'))),
+
+  tags$script(src = 'js/lightbox.min.js')
 )
 
 # Define server logic required to draw a histogram
@@ -73,24 +81,26 @@ server <- function(input, output, session) {
       fluidRow(
         column(3L, verbatimTextOutput('dopListSelectedMsg', T)),
         column(3L, verbatimTextOutput('imageListSelectedMsg', T)),
-        column(3L, verbatimTextOutput('imageListCtMsg', T)),
+        column(2L, verbatimTextOutput('imageListCtMsg', T)),
         column(3L, verbatimTextOutput('imageExifCtMsg', T))
       )
     )
   })
-  output$directoryMsg <- renderText({paste0(readDirectoryInput(session, 'directory'))})
-  output$dopListSelectedMsg <- renderText({paste0(dopList()[input$dopListBox_rows_selected])})
-  output$imageListSelectedMsg <- renderText({paste0(imageList()[input$imageListBox_rows_selected])})
+  output$directoryMsg <- renderText({paste0(selectedFolder())})
+  output$dopListSelectedMsg <- renderText({paste0(selectedDop())})
+  output$imageListSelectedMsg <- renderText({paste0(selectedImage())})
   output$imageListCtMsg <- renderText({paste0('Image List: ', imageList()[,.N], ' items')})
   output$imageExifCtMsg <- renderText({paste0('Image Exif: ', length(imageExif()), ' variables')})
 
   # fileList ----
   fileList <- reactive({
-    req(readDirectoryInput(session, 'directory'))
+    req(selectedFolder())
     data.table(
-      files = dir(readDirectoryInput(session, 'directory'), ignore.case = T)
+      files = dir(selectedFolder(), ignore.case = T)
     )
   })
+
+  selectedFolder <- reactive({readDirectoryInput(session, 'directory')})
 
   # dopList ----
   dopList <- reactive({
@@ -98,18 +108,29 @@ server <- function(input, output, session) {
     fileList()[files %like% '\\.dop$', .(`Sidecar Files` = files)]
   })
 
+  selectedDop <- reactive({
+    req(input$dopListBox_rows_selected)
+    dopList()[input$dopListBox_rows_selected]
+  })
+
   # imageList ----
   imageList <- reactive({
     req(input$dopListBox_rows_selected)
-    selected <- dopList()[input$dopListBox_rows_selected] %>% tools::file_path_sans_ext() %>% paste0(.,'$')
+    selected <- selectedDop() %>% tools::file_path_sans_ext() %>% paste0(.,'$')
     fileList()[files %like% selected & !(files %like% '\\.dop$'), .(`Image Files` = files)]
+  })
+
+  selectedImage <- reactive({
+    req(imageList()[,.N > 0L])
+    req(input$imageListBox_rows_selected)
+    imageList()[input$imageListBox_rows_selected]
   })
 
   # imageExif ----
   imageExif <- reactive({
     req(imageList()[,.N > 0L])
     req(input$imageListBox_rows_selected)
-    paste0(readDirectoryInput(session, 'directory'), imageList()[input$imageListBox_rows_selected]) %>% read_exif()
+    file.path(selectedFolder(), selectedImage()) %>% read_exif()
   })
 
   output$exifInfoBox <- renderText({
@@ -141,33 +162,59 @@ server <- function(input, output, session) {
     )
   })
 
+  output$buttons <- renderUI({
+    req(imageList()[,.N > 0L])
+    req(input$imageListBox_rows_selected)
+    fluidRow(
+      actionButton('renameButton', 'Rename to CR2'),
+      actionButton('renameAllButton', 'Rename All to CR2')
+    )
+  })
 
 
-
-
+  tempThumb <- 'www/temp/thumb.jpg'
+  tempPreview <- 'www/temp/preview.jpg'
 
   observe({
     req(imageList()[,.N > 0L])
     req(input$imageListBox_rows_selected)
     x <- imageExif()
 
-    tempThumb <- tempfile(pattern = 'thumb_', fileext = '.jpg')
+    # tempThumb <- tempfile(pattern = 'thumb_', fileext = '.jpg')
     con <- file(tempThumb, 'wb')
     x$ThumbnailImage %>% substr(., 8, nchar(.)) %>% base64decode(., con)
     close(con)
 
     # tempPreview <- tempfile(pattern = 'preview_', fileext = '.jpg')
-    # con <- file(tempPreview, 'wb')
-    # x$PreviewImage %>% substr(., 8, nchar(.)) %>% base64decode(., con)
-    # close(con)
+    con <- file(tempPreview, 'wb')
+    x$PreviewImage %>% substr(., 8, nchar(.)) %>% base64decode(., con)
+    close(con)
 
-    output$thumbnailImage <- renderImage({
-      list(src = tempThumb, contentType = 'image/jpeg')
-    }, deleteFile = T)
+    # output$thumbnailImage <- renderImage({
+    #   list(src = tempThumb, contentType = 'image/jpeg')
+    # }, deleteFile = T)
+    #
+    output$thumbnailImage <- renderUI({
+      tags$a(
+        href = tempPreview %>% substr(.,5,nchar(.)),
+        `data-lightbox` = 'Preview', `data-title` = x$FileName, `data-alt` = paste0(x$FileName, ' Preview'),
+        tags$img(src = tempThumb %>% substr(.,5,nchar(.)))
+      )
+
+      # actionLink(
+      #   'previewClick', NULL, NULL,
+      #   `data-lightbox` = 'Preview', `data-title` = x$FileName, `data-alt` = paste0(x$FileName, ' Preview'),
+      #   tags$img(src = tempThumb %>% substr(.,5,nchar(.)))
+      # )
+    })
 
     # output$previewImage <- renderImage({
     #   list(src = tempPreview, contentType = 'image/jpeg')
     # }, deleteFile = T)
+  })
+
+  observeEvent(input$renameButton, {
+    file.rename()
   })
 }
 

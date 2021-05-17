@@ -6,7 +6,7 @@ y <- data.table(
   Matches = dir('example/', ignore.case = T)
 )
 
-x <-paste0('example/', '20181005123724-_MGL0123.CR2') %>% read_exif()
+x <- file.path('example/', '20181005123724-_MGL0123.CR2') %>% read_exif()
 tempImg <- tempfile(pattern = 'preview_', fileext = '.jpg')
 writeBin(base64enc::base64decode(x$PreviewImage), tempImg)
 base64enc::base64decode(x$ThumbnailImage, file(tempImg,'wb'))
